@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 视频生成器 · LTX</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,system-ui,"PingFang SC","Microsoft YaHei",Arial}
+body{background:#0b1020;color:#e5e7eb;height:100vh;display:flex;flex-direction:column}
+header{padding:12px 18px;background:#0f172a;border-bottom:1px solid #1f2937;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+header b{font-size:16px}
+header .url{font-size:12px;opacity:.7}
+#apikey{width:190px;padding:8px 10px;border-radius:6px;border:1px solid #334155;background:#111827;color:#e5e7eb;font-size:12px}
+#usage{font-size:12px;padding:5px 12px;border-radius:20px;background:#1e293b;border:1px solid #334155;color:#93c5fd}
+#gallery{flex:1;overflow-y:auto;padding:20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px;align-content:start}
+.card{background:#111827;border:1px solid #1f2937;border-radius:12px;overflow:hidden}
+.card video{width:100%;display:block;background:#000}
+.card .meta{padding:10px 12px;font-size:13px;opacity:.85}
+.card a{display:block;padding:9px;text-align:center;background:#1f2937;color:#fff;text-decoration:none;font-size:13px}
+.card a:hover{background:#374151}
+.status{padding:30px;text-align:center;opacity:.8;font-size:13px;line-height:1.9;white-space:pre-line}
+#controls{background:#0f172a;border-top:1px solid #1f2937;padding:14px 18px}
+.tabs{display:flex;gap:8px;margin-bottom:10px}
+.tab{padding:7px 16px;border-radius:8px;border:1px solid #334155;background:#111827;color:#9ca3af;cursor:pointer;font-size:13px}
+.tab.on{background:#6366f1;color:#fff;border-color:#6366f1}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+textarea{flex:1;min-width:260px;padding:11px;border-radius:8px;border:1px solid #334155;background:#111827;color:#e5e7eb;font-size:14px;resize:vertical}
+.field{display:flex;flex-direction:column;gap:5px;font-size:12px;opacity:.8}
+select{padding:10px;border-radius:8px;border:1px solid #334155;background:#111827;color:#e5e7eb;font-size:13px}
+button.go{padding:11px 22px;border:none;border-radius:8px;background:#6366f1;color:#fff;font-size:14px;cursor:pointer;font-weight:600}
+button.go:hover{background:#4f46e5}
+button.go:disabled{opacity:.5;cursor:not-allowed}
+#drop{border:1.5px dashed #334155;border-radius:10px;padding:14px;text-align:center;font-size:13px;color:#9ca3af;cursor:pointer;margin-bottom:10px;display:none}
+#drop.hot{border-color:#6366f1;color:#c7d2fe}
+#preview{max-height:120px;border-radius:8px;display:none;margin-bottom:10px}
+.hint{font-size:11px;opacity:.55;margin-top:6px}
+</style>
+</head>
+<body>
+<header>
+  <b>🎬 AI 视频生成器</b>
+  <span class="url" id="svc"></span>
+  <span id="usage" title="今日通过本服务提交的视频任务数">今日 0 条</span>
+  <input id="apikey" placeholder="粘贴 API Key（仅存本机浏览器）">
+</header>
+
+<div id="gallery"><div class="status" id="empty">在下方输入描述，生成约 5 秒视频（渲染约需 1.5–2 分钟）。<br>图生视频：选一张照片，配一句运镜描述即可。<br>遇到限流会自动等待重试。</div></div>
+
+<div id="controls">
+  <div class="tabs">
+    <div class="tab on" data-mode="text" onclick="setMode('text')">📝 文字生视频</div>
+    <div class="tab" data-mode="image" onclick="setMode('image')">🖼️ 图片生视频</div>
+  </div>
+  <div id="imgBox">
+    <div id="drop" onclick="document.getElementById('file').click()">📤 点击选择照片（建议横屏，自动压到 1024px）</div>
+    <img id="preview" alt="">
+    <input type="file" id="file" accept="image/*" hidden>
+  </div>
+  <div class="row">
+    <textarea id="prompt" rows="1" placeholder="描述画面/运镜，例如：镜头缓缓前推，晨雾流动，阳光洒落，水面波光粼粼，真实自然"></textarea>
+    <div class="field"><label>时长</label>
+      <select id="dur"><option value="auto">自动</option><option value="6">6 秒</option><option value="8">8 秒</option><option value="10">10 秒</option></select>
+    </div>
+    <div class="field"><label>清晰度</label>
+      <select id="res"><option value="720p">720p</option><option value="480p">480p（快）</option><option value="1080p">1080p</option></select>
+    </div>
+    <button class="go" id="genBtn" onclick="generate()">生成视频</button>
+  </div>
+  <div class="hint">💡 运镜词：slow push in（前推）/ aerial drone shot（航拍）/ gentle pan（平移）/ mist drifting（雾气流动）。免费预览版按公平使用限流，无固定条数。</div>
+</div>
+
+<script>
+const BASE="https://image-gen-api.27701197zack-a29.workers.dev";
+document.getElementById('svc').textContent=BASE.replace('https://','');
+let mode="text", imageDataURL=null;
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const KEYSTORE="ig_apikey";
+const akEl=document.getElementById("apikey");
+akEl.value=localStorage.getItem(KEYSTORE)||"";
+const key=()=>{const v=akEl.value.trim(); if(v) localStorage.setItem(KEYSTORE,v); return v;};
+
+async function refreshUsage(){
+  try{
+    const r=await fetch(BASE+'/usage',{headers:{Authorization:"Bearer "+key()}});
+    const j=await r.json();
+    if(typeof j.video_today==='number') document.getElementById('usage').textContent='今日 '+j.video_today+' 条';
+  }catch{}
+}
+refreshUsage();
+
+function setMode(m){
+  mode=m;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.mode===m));
+  document.getElementById('imgBox').style.display = m==='image'?'block':'none';
+}
+
+const drop=document.getElementById('drop'), fileInput=document.getElementById('file'), preview=document.getElementById('preview');
+fileInput.addEventListener('change', e=>handleFile(e.target.files[0]));
+['dragover','dragenter'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('hot')}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('hot')}));
+drop.addEventListener('drop',e=>handleFile(e.dataTransfer.files[0]));
+
+function handleFile(f){
+  if(!f) return;
+  const img=new Image();
+  img.onload=()=>{
+    const scale=Math.min(1,1024/img.width);
+    const w=Math.round(img.width*scale), h=Math.round(img.height*scale);
+    const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+    cv.getContext('2d').drawImage(img,0,0,w,h);
+    imageDataURL=cv.toDataURL('image/jpeg',0.9);
+    preview.src=imageDataURL; preview.style.display='block';
+    drop.textContent='✅ 已选择：'+f.name+'（'+w+'×'+h+'），点击可重选';
+  };
+  img.src=URL.createObjectURL(f);
+}
+
+// 带 429 自动退避重试的 fetch。onWait(秒, 第几次) 用于显示倒计时。
+async function apiFetch(path, opts, onWait){
+  let attempt=0;
+  while(true){
+    const r=await fetch(BASE+path, opts);
+    if(r.status===429 && attempt<6){
+      let wait=20;
+      try{ const j=await r.clone().json(); if(j.retry_after) wait=Number(j.retry_after)||wait; }catch{}
+      wait=Math.min(wait,60);
+      for(let s=wait; s>0; s--){ onWait&&onWait(s, attempt+1); await sleep(1000); }
+      attempt++; continue;
+    }
+    return r;
+  }
+}
+
+function addCard(promptText, initMsg){
+  const card=document.createElement('div'); card.className='card';
+  card.innerHTML='<div class="status">'+initMsg+'</div><div class="meta">'+promptText+'</div>';
+  const g=document.getElementById('gallery');
+  const empty=document.getElementById('empty'); if(empty) empty.remove();
+  g.prepend(card);
+  return card;
+}
+
+async function generate(){
+  if(!key()) return alert('请填 API Key');
+  const prompt=document.getElementById('prompt').value.trim();
+  if(!prompt && mode==='text') return alert('请输入画面描述');
+  if(mode==='image' && !imageDataURL) return alert('请先选择一张照片');
+
+  const btn=document.getElementById('genBtn'); btn.disabled=true;
+  const label=(prompt||'(基于图片)').slice(0,60);
+  const card=addCard((mode==='image'?'🖼️ 图生视频：':'📝 文生视频：')+label, '⏳ 提交任务中…');
+  const setStatus=t=>{ const s=card.querySelector('.status'); if(s) s.textContent=t; };
+
+  try{
+    const payload={prompt: prompt||"cinematic slow camera push, natural motion, realistic",
+      resolution:document.getElementById('res').value};
+    const dur=document.getElementById('dur').value;
+    if(dur!=="auto") payload.duration=Number(dur);
+    if(mode==='image') payload.image=imageDataURL;
+    const hdr={Authorization:"Bearer "+key(),"Content-Type":"application/json"};
+
+    const r=await apiFetch((mode==='image'?'/video/image':'/video/text'),
+      {method:'POST',headers:hdr,body:JSON.stringify(payload)},
+      (s,n)=>setStatus('🚦 触发限流，第 '+n+' 次等待重试… 还剩 '+s+' 秒'));
+    const j=await r.json();
+    if(!r.ok) throw new Error(j.error||('HTTP '+r.status));
+    const rid=j.request_id;
+    refreshUsage();
+    setStatus('🔄 排队中…（通常需 1.5–2 分钟）');
+
+    const t0=Date.now();
+    const tick=setInterval(()=>{
+      const m=Math.floor((Date.now()-t0)/60000), s=Math.floor(((Date.now()-t0)%60000)/1000);
+      const el=card.querySelector('.status');
+      if(el && el.textContent.startsWith('🎨')) el.textContent='🎨 渲染中… '+m+':'+String(s).padStart(2,'0');
+    },1000);
+
+    for(let i=0;i<70;i++){
+      await sleep(6000);
+      const sr=await apiFetch('/video/status?request_id='+encodeURIComponent(rid),
+        {headers:{Authorization:"Bearer "+key()}},
+        (s,n)=>setStatus('🚦 限流，'+s+' 秒后自动继续查询…'));
+      const st=await sr.json();
+      if(st.status==='COMPLETED'){
+        clearInterval(tick);
+        const url=st.output.media_url[0];
+        const secs=((Date.now()-t0)/1000).toFixed(0);
+        card.innerHTML='<video src="'+url+'" controls autoplay loop muted playsinline></video>'+
+          '<div class="meta">'+(mode==='image'?'🖼️':'📝')+' '+(prompt||'(基于图片)').slice(0,80)+'<br>⏱️ 耗时 '+secs+' 秒</div>'+
+          '<a href="'+url+'" download="ltx-video.mp4">⬇️ 下载视频</a>';
+        btn.disabled=false; return;
+      }
+      if(st.status==='ERROR'){ clearInterval(tick); throw new Error(st.error||'生成失败'); }
+      if(st.status==='PROCESSING') setStatus('🎨 渲染中…');
+    }
+    throw new Error('超时，可凭 request_id 稍后查询：'+rid);
+  }catch(err){
+    card.querySelector('.status').innerHTML='❌ '+err.message;
+  }finally{
+    btn.disabled=false;
+  }
+}
+</script>
+</body>
+</html>
