@@ -1,180 +1,154 @@
 <!DOCTYPE html>
-
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Free AI Image Generator</title>
-
+<title>AI 生图 · FLUX / Phoenix / Pixazo</title>
 <style>
-*{box-sizing:border-box;margin:0;padding:0;font-family:system-ui,Arial}
-body{
-background:#0f172a;
-color:#fff;
-display:flex;
-flex-direction:column;
-height:100vh;
-}
-
-header{
-padding:14px;
-text-align:center;
-font-weight:600;
-background:#111827;
-border-bottom:1px solid #1f2937;
-}
-
-#gallery{
-flex:1;
-overflow-y:auto;
-padding:20px;
-display:grid;
-grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
-gap:16px;
-}
-
-.card{
-background:#111827;
-border-radius:10px;
-overflow:hidden;
-border:1px solid #1f2937;
-}
-
-.card img{
-width:100%;
-display:block;
-}
-
-.card p{
-font-size:13px;
-padding:8px;
-opacity:.8;
-}
-
-.card a{
-display:block;
-padding:6px 10px;
-font-size:12px;
-text-align:center;
-background:#1f2937;
-color:#fff;
-text-decoration:none;
-}
-
-#controls{
-padding:12px;
-background:#111827;
-border-top:1px solid #1f2937;
-display:flex;
-flex-wrap:wrap;
-gap:8px;
-}
-
-input,button{
-padding:10px;
-border:none;
-border-radius:6px;
-}
-
-#prompt{
-flex:1;
-min-width:160px;
-}
-
-#apikey{
-width:140px;
-}
-
-button{
-background:#6366f1;
-color:white;
-cursor:pointer;
-}
-
-button:hover{
-background:#4f46e5;
-}
-
-.loader{
-grid-column:1/-1;
-text-align:center;
-opacity:.7;
-}
+*{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,system-ui,"PingFang SC","Microsoft YaHei",Arial}
+body{background:#0b1020;color:#e5e7eb;height:100vh;display:flex;flex-direction:column}
+header{padding:12px 18px;background:#0f172a;border-bottom:1px solid #1f2937;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+header b{font-size:16px}
+header .url{font-size:12px;opacity:.7}
+#apikey{width:190px;padding:8px 10px;border-radius:6px;border:1px solid #334155;background:#111827;color:#e5e7eb;font-size:12px}
+#gallery{flex:1;overflow-y:auto;padding:20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;align-content:start}
+.card{background:#111827;border:1px solid #1f2937;border-radius:12px;overflow:hidden}
+.card img{width:100%;display:block}
+.card .meta{padding:10px 12px;font-size:12px;opacity:.85;line-height:1.6}
+.card a{display:block;padding:9px;text-align:center;background:#1f2937;color:#fff;text-decoration:none;font-size:13px}
+.card a:hover{background:#374151}
+.status{padding:30px;text-align:center;opacity:.8;font-size:13px;line-height:1.9;white-space:pre-line}
+#controls{background:#0f172a;border-top:1px solid #1f2937;padding:14px 18px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+textarea{flex:1;min-width:240px;padding:11px;border-radius:8px;border:1px solid #334155;background:#111827;color:#e5e7eb;font-size:14px;resize:vertical}
+.field{display:flex;flex-direction:column;gap:5px;font-size:12px;opacity:.8}
+select{padding:10px;border-radius:8px;border:1px solid #334155;background:#111827;color:#e5e7eb;font-size:13px}
+button.go{padding:11px 22px;border:none;border-radius:8px;background:#6366f1;color:#fff;font-size:14px;cursor:pointer;font-weight:600}
+button.go:hover{background:#4f46e5}
+button.go:disabled{opacity:.5;cursor:not-allowed}
+.hint{font-size:11px;opacity:.55;margin-top:8px}
+.modeltag{display:inline-block;padding:1px 8px;border-radius:10px;background:#1e293b;border:1px solid #334155;color:#93c5fd;font-size:11px}
+.modeltag.px{color:#fcd34d;border-color:#92741c}
 </style>
-
 </head>
-
 <body>
+<header>
+  <b>🎨 AI 生图</b>
+  <span class="url" id="svc"></span>
+  <input id="apikey" placeholder="粘贴 API Key（仅存本机浏览器）">
+</header>
 
-<header>✨ Free AI Image Generator</header>
-
-<div id="gallery"></div>
+<div id="gallery"><div class="status" id="empty">在下方输入描述，选择模型即可生图。<br>写实照片选 <b>Phoenix</b>，通用快速选 <b>FLUX</b>；<b>Pixazo</b> 是备用线路（约 15 秒）。<br>遇到限流会自动等待重试。</div></div>
 
 <div id="controls">
-<input id="apikey" placeholder="API Key（仅存本机）">
-<input id="prompt" placeholder="Describe the image you want...">
-<button onclick="generate()">Generate</button>
+  <div class="row">
+    <textarea id="prompt" rows="1" placeholder="描述画面，例如：超级写实照片感的普陀山，晨雾缭绕，海面波光，金色阳光，真实摄影质感"></textarea>
+    <div class="field"><label>模型</label>
+      <select id="model">
+        <option value="@cf/black-forest-labs/flux-1-schnell">FLUX Schnell · 快·通用（Cloudflare）</option>
+        <option value="@cf/leonardo/phoenix-1.0">Phoenix · 写实照片感（Cloudflare）</option>
+        <option value="pixazo/flux-1-schnell">FLUX · Pixazo 备用线路（约15秒）</option>
+        <option value="@cf/bytedance/stable-diffusion-xl-lightning">SDXL Lightning · 快速（Cloudflare）</option>
+        <option value="@cf/stabilityai/stable-diffusion-xl-base-1.0">SDXL · 高质量·慢（Cloudflare）</option>
+        <option value="@cf/lykon/dreamshaper-8-lcm">DreamShaper · 插画/艺术（Cloudflare）</option>
+      </select>
+    </div>
+    <div class="field"><label>画幅</label>
+      <select id="ratio">
+        <option value="1:1">方形 1:1</option>
+        <option value="3:4">竖版 3:4（海报）</option>
+        <option value="16:9">横版 16:9</option>
+        <option value="9:16">竖屏 9:16</option>
+      </select>
+    </div>
+    <button class="go" id="genBtn" onclick="generate()">生成图片</button>
+  </div>
+  <div class="hint">💡 画幅比例仅对 <b>Pixazo</b> 线路生效（Cloudflare 模型为固定尺寸）。写实关键词：photorealistic、8k、natural light、shot on DSLR。</div>
 </div>
 
 <script>
-window.addEventListener("DOMContentLoaded",()=>{const k=document.getElementById("apikey"); if(k&&window.localStorage){k.value=localStorage.getItem("ig_apikey")||"";}});
+const BASE="https://image-gen-api.27701197zack-a29.workers.dev";
+document.getElementById('svc').textContent=BASE.replace('https://','');
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const KEYSTORE="ig_apikey";
+const akEl=document.getElementById("apikey");
+akEl.value=localStorage.getItem(KEYSTORE)||"";
+function key(){
+  const v=akEl.value.trim();
+  if(v) localStorage.setItem(KEYSTORE,v);
+  return v.trim();
+}
+// 画幅 → 像素（仅 Pixazo 用）
+const RATIO_WH={ "1:1":[1024,1024], "3:4":[768,1024], "16:9":[1024,576], "9:16":[576,1024] };
+const MODEL_LABEL={};
+document.querySelectorAll('#model option').forEach(o=>MODEL_LABEL[o.value]=o.textContent);
 
+async function apiFetch(opts, onWait){
+  let attempt=0;
+  while(true){
+    const r=await fetch(BASE, opts);
+    if(r.status===429 && attempt<6){
+      let wait=20;
+      try{ const j=await r.clone().json(); if(j.retry_after) wait=Number(j.retry_after)||wait; }catch{}
+      wait=Math.min(wait,60);
+      for(let s=wait;s>0;s--){ onWait&&onWait(s,attempt+1); await sleep(1000); }
+      attempt++; continue;
+    }
+    return r;
+  }
+}
 
-const API_URL="https://image-gen-api.27701197zack-a29.workers.dev";
+function addCard(promptText, initMsg){
+  const card=document.createElement('div'); card.className='card';
+  card.innerHTML='<div class="status">'+initMsg+'</div><div class="meta">'+promptText+'</div>';
+  const g=document.getElementById('gallery');
+  const empty=document.getElementById('empty'); if(empty) empty.remove();
+  g.prepend(card);
+  return card;
+}
 
 async function generate(){
-const prompt=document.getElementById("prompt").value.trim();
-const key=document.getElementById("apikey").value.trim();
-const KEYSTORE="ig_apikey";
-if(window.localStorage){ if(!key){document.getElementById("apikey").value=localStorage.getItem(KEYSTORE)||"";} else {localStorage.setItem(KEYSTORE,key);} }
-// 重新取一次（可能已从 localStorage 填充）
+  if(!key()) return alert('请填 API Key');
+  const prompt=document.getElementById('prompt').value.trim();
+  if(!prompt) return alert('请输入画面描述');
+  const model=document.getElementById('model').value;
+  const ratio=document.getElementById('ratio').value;
+  const isPx=model.startsWith('pixazo/');
 
-const gallery=document.getElementById("gallery");
+  const btn=document.getElementById('genBtn'); btn.disabled=true;
+  const tag='<span class="modeltag'+(isPx?' px':'')+'">'+MODEL_LABEL[model]+'</span>';
+  const card=addCard(tag+'<br>'+prompt.slice(0,80), '⏳ 生成中…');
+  const setStatus=t=>{ const s=card.querySelector('.status'); if(s) s.textContent=t; };
+  const t0=Date.now();
 
-if(!prompt||!key)return alert("Enter prompt and API key");
+  try{
+    const payload={ prompt, model };
+    if(isPx){ const [w,h]=RATIO_WH[ratio]; payload.width=w; payload.height=h; }
+    const hdr={Authorization:"Bearer "+key(),"Content-Type":"application/json"};
 
-const loader=document.createElement("div");
-loader.className="loader";
-loader.innerText="Generating image...";
-gallery.prepend(loader);
+    const r=await apiFetch({method:'POST',headers:hdr,body:JSON.stringify(payload)},
+      (s,n)=>setStatus('🚦 触发限流，第 '+n+' 次等待重试… 还剩 '+s+' 秒'));
 
-try{
+    if(!r.ok){
+      let msg='HTTP '+r.status;
+      try{ const j=await r.json(); msg=j.error||msg; }catch{}
+      throw new Error(msg);
+    }
 
-const res=await fetch(API_URL,{
-method:"POST",
-headers:{
-"Content-Type":"application/json",
-"Authorization":"Bearer "+key
-},
-body:JSON.stringify({prompt})
-});
-
-if(!res.ok) throw new Error("API Error");
-
-const blob=await res.blob();
-const url=URL.createObjectURL(blob);
-
-const card=document.createElement("div");
-card.className="card";
-
-card.innerHTML=`
-<img src="${url}">
-<p>${prompt}</p>
-<a href="${url}" download="ai-image.png">Download</a>
-`;
-
-gallery.prepend(card);
-
-}catch(err){
-alert(err.message);
+    const blob=await r.blob();
+    const url=URL.createObjectURL(blob);
+    const ext=(blob.type||'').includes('png')?'png':'jpg';
+    const secs=((Date.now()-t0)/1000).toFixed(0);
+    card.innerHTML='<img src="'+url+'" alt="generated">'+
+      '<div class="meta">'+tag+'<br>'+prompt.slice(0,80)+'<br>⏱️ '+secs+' 秒 · '+ratio+(isPx?'':'（固定尺寸）')+'</div>'+
+      '<a href="'+url+'" download="ai-image.'+ext+'">⬇️ 下载图片</a>';
+  }catch(err){
+    card.querySelector('.status').innerHTML='❌ '+err.message;
+  }finally{
+    btn.disabled=false;
+    document.getElementById('prompt').value='';
+  }
 }
-
-loader.remove();
-document.getElementById("prompt").value="";
-
-}
-
 </script>
-
 </body>
 </html>
